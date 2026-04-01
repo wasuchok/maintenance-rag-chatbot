@@ -1,19 +1,21 @@
 import os
 import uuid
-import requests
-import chromadb
+from typing import Dict, List, Optional
 
-from typing import List, Dict
+import chromadb
+import requests
 from django.conf import settings
+
 from ..models import KnowledgeDocument
+from .knowledge_access_service import get_accessible_knowledge_document_ids
 
 CHROMA_DIR = os.path.join(settings.BASE_DIR, "chroma_data")
 client = chromadb.PersistentClient(path=CHROMA_DIR)
 
 collection = client.get_or_create_collection(name="knowledge_base")
 
-OLLAMA_EMBED_URL = "http://localhost:11434/api/embed"
-EMBED_MODEL = "embeddinggemma"
+OLLAMA_EMBED_URL = settings.OLLAMA_EMBED_URL
+EMBED_MODEL = settings.OLLAMA_EMBED_MODEL
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str]:
     chunks = []
@@ -58,7 +60,12 @@ def index_document(document: KnowledgeDocument):
             "document_id" : document.id,
             "title" : document.title,
             "chunk_index" : i,
-            "source" : document.source or ""
+            "source" : document.source or "",
+            "visibility" : document.visibility,
+            "owner_id" : document.owner_id if document.owner_id is not None else -1,
+            "owner_username" : (
+                document.owner.get_username() if document.owner_id is not None else ""
+            ),
         })
 
         embeddings.append(embed_text(chunk))
@@ -95,12 +102,27 @@ def deduplicate_results(items : List[Dict]) -> List[Dict]:
 
     return unique_items
 
-def search_knowledge(query: str, top_k : int =  5, max_distance: float = 1.2) -> List[Dict]:
+def search_knowledge(
+    query: str,
+    top_k: int = 5,
+    max_distance: float = 1.2,
+    user_id: Optional[int] = None,
+    can_manage_all: bool = False,
+) -> List[Dict]:
+    accessible_document_ids = get_accessible_knowledge_document_ids(
+        user_id=user_id,
+        can_manage_all=can_manage_all,
+    )
+
+    if not accessible_document_ids:
+        return []
+
     query_embedding =  embed_text(query)
 
     result =  collection.query(
         query_embeddings=[query_embedding],
         n_results=top_k,
+        where={"document_id": {"$in": accessible_document_ids}},
         include=["documents", "metadatas", "distances"]
     )
 
@@ -121,12 +143,10 @@ def search_knowledge(query: str, top_k : int =  5, max_distance: float = 1.2) ->
             "distance" : distance
         })
 
-        items = deduplicate_results(items)
+    items = deduplicate_results(items)
+    items.sort(key=lambda x: x["distance"] if x["distance"] is not None else 9999)
+    return items
 
-        items.sort(key=lambda x: x["distance"] if x["distance"] is not None else 9999)
-
-        return items
-    
 def delete_document_from_index(document_id : int) :
     collection.delete(
         where={"document_id" : document_id}

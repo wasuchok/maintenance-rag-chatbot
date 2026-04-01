@@ -1,0 +1,7 @@
+Django==6.0.3
+djangorestframework==3.16.1
+requests==2.32.5
+chromadb==1.5.5
+python-dotenv==1.2.2
+chainlit==2.10.1
+pypdf==6.1.3
