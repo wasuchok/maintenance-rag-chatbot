@@ -12,6 +12,16 @@ def get_bool_env(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def get_int_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value.strip())
+    except (TypeError, ValueError):
+        return default
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -24,6 +34,22 @@ OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.0"))
 RAG_ONLY_MODE = get_bool_env("RAG_ONLY_MODE", False)
 RAG_INCLUDE_CHAT_HISTORY = get_bool_env("RAG_INCLUDE_CHAT_HISTORY", True)
 RAG_SEARCH_TOP_K = max(1, int(os.getenv("RAG_SEARCH_TOP_K", "8")))
+SQLSERVER_HOST = os.getenv("SQLSERVER_HOST", "").strip()
+SQLSERVER_PORT = get_int_env("SQLSERVER_PORT", 1433)
+SQLSERVER_DATABASE = os.getenv("SQLSERVER_DATABASE", "").strip()
+SQLSERVER_USERNAME = os.getenv("SQLSERVER_USERNAME", "").strip()
+SQLSERVER_PASSWORD = os.getenv("SQLSERVER_PASSWORD", "")
+SQLSERVER_DRIVER = os.getenv("SQLSERVER_DRIVER", "ODBC Driver 18 for SQL Server").strip()
+SQLSERVER_CLIENT = os.getenv("SQLSERVER_CLIENT", "pytds").strip().lower() or "pytds"
+SQLSERVER_ENCRYPT = get_bool_env("SQLSERVER_ENCRYPT", False)
+SQLSERVER_TRUST_SERVER_CERTIFICATE = get_bool_env(
+    "SQLSERVER_TRUST_SERVER_CERTIFICATE",
+    True,
+)
+SQLSERVER_TRUSTED_CONNECTION = get_bool_env("SQLSERVER_TRUSTED_CONNECTION", False)
+SQLSERVER_CONNECTION_TIMEOUT = max(1, get_int_env("SQLSERVER_CONNECTION_TIMEOUT", 30))
+SQLSERVER_CASES_SCHEMA = os.getenv("SQLSERVER_CASES_SCHEMA", "dbo").strip() or "dbo"
+SQLSERVER_CASES_TABLE = os.getenv("SQLSERVER_CASES_TABLE", "").strip()
 
 
 # Quick-start development settings - unsuitable for production
