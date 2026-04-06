@@ -1,5 +1,6 @@
 import requests
 
+from django.conf import settings
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -14,6 +15,14 @@ from .services.knowledge_access_service import (
 )
 from .services.knowledge_management_service import list_knowledge_documents
 from .services.rag_service import index_document, delete_document_from_index
+from .services.sqlserver_job_card_ingestion_service import import_sqlserver_job_cards
+from .services.sqlserver_job_card_sync_service import (
+    sync_sqlserver_job_cards_with_checkpoint,
+)
+from .services.sqlserver_service import (
+    SQLServerConfigurationError,
+    SQLServerDependencyError,
+)
 
 
 def get_request_user_id(request):
@@ -27,6 +36,46 @@ def can_manage_all_documents(request) -> bool:
         request.user.is_authenticated
         and (request.user.is_staff or request.user.is_superuser)
     )
+
+
+def has_valid_import_api_key(request) -> bool:
+    configured_key = (settings.IMPORT_API_KEY or "").strip()
+    if not configured_key:
+        return False
+
+    provided_key = (request.headers.get("X-API-Key") or "").strip()
+    return bool(provided_key and provided_key == configured_key)
+
+
+def can_import_from_external_api(request) -> bool:
+    return can_manage_all_documents(request) or has_valid_import_api_key(request)
+
+
+def parse_optional_positive_int(value, field_name: str):
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be an integer") from exc
+    if parsed <= 0:
+        raise ValueError(f"{field_name} must be greater than 0")
+    return parsed
+
+
+def parse_optional_bool(value, field_name: str) -> bool:
+    if value in (None, ""):
+        return False
+    if isinstance(value, bool):
+        return value
+
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+
+    raise ValueError(f"{field_name} must be a boolean")
 
 
 @api_view(["POST"])
@@ -296,6 +345,159 @@ def health_check(request):
         "status": "ok",
         "service": "django-chatbot-api"
     })
+
+
+@api_view(["POST"])
+def import_mt_job_card_view(request):
+    if not can_import_from_external_api(request):
+        return Response(
+            {"error": "permission denied"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        limit = parse_optional_positive_int(request.data.get("limit"), "limit")
+        days = parse_optional_positive_int(request.data.get("days"), "days")
+    except ValueError as exc:
+        return Response(
+            {"error": str(exc)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    schema = (
+        request.data.get("schema")
+        or settings.SQLSERVER_JOB_CARD_SCHEMA
+        or "dbo"
+    ).strip()
+    view_name = (
+        request.data.get("view_name")
+        or request.data.get("view")
+        or settings.SQLSERVER_JOB_CARD_VIEW
+        or "v_MT_JOB_CARD"
+    ).strip()
+
+    if not view_name:
+        return Response(
+            {"error": "view_name is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        result = import_sqlserver_job_cards(
+            schema=schema,
+            view_name=view_name,
+            limit=limit,
+            days=days,
+        )
+    except (SQLServerConfigurationError, SQLServerDependencyError) as exc:
+        return Response(
+            {"error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    except Exception as exc:
+        return Response(
+            {"error": f"import job cards failed: {exc}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    summary = result["summary"]
+    return Response(
+        {
+            "message": "import job cards completed",
+            "schema": result["schema"],
+            "view_name": result["view_name"],
+            "days": result["days"],
+            "total_rows": summary.total_rows,
+            "created": summary.created_count,
+            "updated": summary.updated_count,
+            "skipped": summary.skipped_count,
+            "errors": summary.error_count,
+            "error_samples": result["errors"][:10],
+        }
+    )
+
+
+@api_view(["POST"])
+def sync_mt_job_card_view(request):
+    if not can_import_from_external_api(request):
+        return Response(
+            {"error": "permission denied"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        limit = parse_optional_positive_int(request.data.get("limit"), "limit")
+        bootstrap_days = parse_optional_positive_int(
+            request.data.get("bootstrap_days"),
+            "bootstrap_days",
+        )
+        overlap_minutes = parse_optional_positive_int(
+            request.data.get("overlap_minutes"),
+            "overlap_minutes",
+        )
+        full = parse_optional_bool(request.data.get("full"), "full")
+    except ValueError as exc:
+        return Response(
+            {"error": str(exc)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    schema = (
+        request.data.get("schema")
+        or settings.SQLSERVER_JOB_CARD_SCHEMA
+        or "dbo"
+    ).strip()
+    view_name = (
+        request.data.get("view_name")
+        or request.data.get("view")
+        or settings.SQLSERVER_JOB_CARD_VIEW
+        or "v_MT_JOB_CARD"
+    ).strip()
+
+    if not view_name:
+        return Response(
+            {"error": "view_name is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        result = sync_sqlserver_job_cards_with_checkpoint(
+            schema=schema,
+            view_name=view_name,
+            limit=limit,
+            full=full,
+            bootstrap_days=bootstrap_days,
+            overlap_minutes=overlap_minutes,
+        )
+    except (SQLServerConfigurationError, SQLServerDependencyError) as exc:
+        return Response(
+            {"error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    except Exception as exc:
+        return Response(
+            {"error": f"sync job cards failed: {exc}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    summary = result["summary"]
+    return Response(
+        {
+            "message": "sync job cards completed",
+            "schema": result["schema"],
+            "view_name": result["view_name"],
+            "sync_mode": result["sync_mode"],
+            "used_since": result["used_since"],
+            "latest_job_create_date": result.get("latest_job_create_date"),
+            "total_rows": summary.total_rows,
+            "created": summary.created_count,
+            "updated": summary.updated_count,
+            "skipped": summary.skipped_count,
+            "errors": summary.error_count,
+            "checkpoint": result["checkpoint"],
+            "error_samples": result["errors"][:10],
+        }
+    )
 
 @api_view(["POST"])
 def add_knowledge(request):

@@ -70,3 +70,37 @@ class KnowledgeDocument(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class SyncCheckpoint(models.Model):
+    STATUS_NEVER = "never"
+    STATUS_RUNNING = "running"
+    STATUS_SUCCESS = "success"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_NEVER, "Never"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_SUCCESS, "Success"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    key = models.CharField(max_length=255, unique=True, db_index=True)
+    source_type = models.CharField(max_length=100)
+    source_name = models.CharField(max_length=255)
+    cursor_field = models.CharField(max_length=100, blank=True, null=True)
+    cursor_value = models.CharField(max_length=32, blank=True, null=True)
+    last_status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_NEVER,
+        db_index=True,
+    )
+    last_run_started_at = models.DateTimeField(blank=True, null=True)
+    last_run_finished_at = models.DateTimeField(blank=True, null=True)
+    last_error = models.TextField(blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.key

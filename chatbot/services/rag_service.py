@@ -16,6 +16,7 @@ collection = client.get_or_create_collection(name="knowledge_base")
 
 OLLAMA_EMBED_URL = settings.OLLAMA_EMBED_URL
 EMBED_MODEL = settings.OLLAMA_EMBED_MODEL
+CHROMA_IN_FILTER_BATCH_SIZE = 500
 
 def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str]:
     chunks = []
@@ -102,6 +103,23 @@ def deduplicate_results(items : List[Dict]) -> List[Dict]:
 
     return unique_items
 
+
+def _collect_query_items(result: Dict) -> List[Dict]:
+    documents = result.get("documents", [[]])[0]
+    metadatas = result.get("metadatas", [[]])[0]
+    distances = result.get("distances", [[]])[0]
+
+    items = []
+    for i in range(len(documents)):
+        distance = distances[i] if i < len(distances) else None
+        items.append({
+            "content": documents[i],
+            "metadata": metadatas[i] or {},
+            "distance": distance,
+        })
+
+    return items
+
 def search_knowledge(
     query: str,
     top_k: int = 5,
@@ -118,34 +136,34 @@ def search_knowledge(
         return []
 
     query_embedding =  embed_text(query)
+    items: List[Dict] = []
 
-    result =  collection.query(
-        query_embeddings=[query_embedding],
-        n_results=top_k,
-        where={"document_id": {"$in": accessible_document_ids}},
-        include=["documents", "metadatas", "distances"]
-    )
-
-    documents = result.get("documents", [[]])[0]
-    metadatas = result.get("metadatas", [[]])[0]
-    distances = result.get("distances", [[]])[0]
-
-    items = []
-    for i in range(len(documents)):
-        distance = distances[i] if i < len(distances) else None
-
-        if distance is not None and distance > max_distance:
+    for start in range(0, len(accessible_document_ids), CHROMA_IN_FILTER_BATCH_SIZE):
+        batch_document_ids = accessible_document_ids[
+            start : start + CHROMA_IN_FILTER_BATCH_SIZE
+        ]
+        if not batch_document_ids:
             continue
 
-        items.append({
-            "content" : documents[i],
-            "metadata" : metadatas[i] or {},
-            "distance" : distance
-        })
+        result = collection.query(
+            query_embeddings=[query_embedding],
+            n_results=top_k,
+            where={"document_id": {"$in": batch_document_ids}},
+            include=["documents", "metadatas", "distances"]
+        )
+        items.extend(_collect_query_items(result))
 
     items = deduplicate_results(items)
+    filtered_items = []
+    for item in items:
+        distance = item.get("distance")
+        if distance is not None and distance > max_distance:
+            continue
+        filtered_items.append(item)
+
+    items = filtered_items
     items.sort(key=lambda x: x["distance"] if x["distance"] is not None else 9999)
-    return items
+    return items[:top_k]
 
 def delete_document_from_index(document_id : int) :
     collection.delete(

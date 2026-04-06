@@ -54,6 +54,74 @@ python manage.py import_sqlserver_cases
 python manage.py import_sqlserver_cases --limit 20
 ```
 
+import ข้อมูลจาก view `v_MT_JOB_CARD` ผ่าน API เพื่อเข้า knowledge base
+
+```http
+POST /api/knowledge/import/mt-job-cards/
+Content-Type: application/json
+X-API-Key: your-import-key
+
+{
+  "schema": "dbo",
+  "view_name": "v_MT_JOB_CARD",
+  "days": 30,
+  "limit": 500
+}
+```
+
+ถ้าไม่ได้ตั้ง `IMPORT_API_KEY` ไว้ API นี้จะใช้ได้เฉพาะตอน request นั้นเป็น admin ของ Django เท่านั้น
+
+sync แบบ automation + checkpoint สำหรับ `v_MT_JOB_CARD`
+
+```bash
+python manage.py sync_mt_job_cards
+```
+
+พฤติกรรม:
+
+- รอบแรก ถ้ายังไม่มี checkpoint จะดึงทั้งหมด
+- รอบถัดไปจะดึงต่อจาก `J_CREATE_DATE` ล่าสุดที่เคย sync สำเร็จ
+- มี overlap ย้อนหลังเป็นนาทีเพื่อกันข้อมูลตกหล่น และระบบจะ upsert/skip ให้เอง
+
+ถ้าต้องการตั้ง bootstrap ให้รอบแรกเอาเฉพาะช่วงล่าสุดก่อน
+
+```bash
+python manage.py sync_mt_job_cards --bootstrap-days 7
+```
+
+ถ้าต้องการบังคับ full sync ใหม่
+
+```bash
+python manage.py sync_mt_job_cards --full
+```
+
+ถ้าต้องการเปลี่ยน overlap นาที
+
+```bash
+python manage.py sync_mt_job_cards --overlap-minutes 120
+```
+
+ตัวอย่าง cron sync ทุกวันตอนตีสอง
+
+```cron
+0 2 * * * cd /Users/mac_it/Desktop/django-local-chatbot && /Users/mac_it/Desktop/django-local-chatbot/.venv312/bin/python manage.py sync_mt_job_cards
+```
+
+ถ้าต้องการยิงผ่าน API แบบใช้ checkpoint
+
+```http
+POST /api/knowledge/sync/mt-job-cards/
+Content-Type: application/json
+X-API-Key: your-import-key
+
+{
+  "schema": "dbo",
+  "view_name": "v_MT_JOB_CARD",
+  "bootstrap_days": 7,
+  "overlap_minutes": 120
+}
+```
+
 ถ้าต้องการ sync เฉพาะข้อมูลที่อยู่ในช่วง N วันล่าสุด
 
 ```bash
@@ -87,3 +155,7 @@ python manage.py sync_sqlserver_cases
 - คำสั่ง import ใช้ `CARD_ID` เป็นคีย์อ้างอิงคงที่ ถ้ารันซ้ำจะแก้เฉพาะแถวที่เปลี่ยนและข้ามแถวที่เหมือนเดิม
 - เอกสารที่ import จาก SQL Server จะถูกเก็บเป็น knowledge แบบ `shared`
 - โหมด `--days N` ในเวอร์ชันนี้ใช้คอลัมน์ `Create_date` เป็นตัวกรองข้อมูลล่าสุด
+- API import `mt-job-cards` ใช้คอลัมน์ `J_CREATE_DATE` เป็นตัวกรองข้อมูลล่าสุด
+- ถ้าต้องการเปิดให้เว็บภายนอกยิง API import ได้ แนะนำตั้ง `IMPORT_API_KEY=your-secret-key` ใน `.env`
+- คำสั่ง `sync_mt_job_cards` และ API `/api/knowledge/sync/mt-job-cards/` ใช้ checkpoint เก็บ cursor ล่าสุดไว้ในฐานข้อมูลของ Django
+- ค่า overlap สำหรับ checkpoint ปรับได้จาก `.env` ด้วย `SQLSERVER_JOB_CARD_SYNC_OVERLAP_MINUTES`
