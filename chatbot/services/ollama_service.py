@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 OLLAMA_URL = settings.OLLAMA_CHAT_URL
 OLLAMA_MODEL = settings.OLLAMA_MODEL
 OLLAMA_TEMPERATURE = settings.OLLAMA_TEMPERATURE
+OLLAMA_THINK = settings.OLLAMA_THINK
+OLLAMA_KEEP_ALIVE = settings.OLLAMA_KEEP_ALIVE
+OLLAMA_NUM_PREDICT = settings.OLLAMA_NUM_PREDICT
 RAG_ONLY_MODE = settings.RAG_ONLY_MODE
 RAG_INCLUDE_CHAT_HISTORY = settings.RAG_INCLUDE_CHAT_HISTORY
 RAG_SEARCH_TOP_K = settings.RAG_SEARCH_TOP_K
@@ -137,8 +140,11 @@ def build_ollama_payload(
         "model": OLLAMA_MODEL,
         "messages": messages,
         "stream": stream,
+        "think": OLLAMA_THINK,
+        "keep_alive": OLLAMA_KEEP_ALIVE,
         "options": {
-            "temperature": OLLAMA_TEMPERATURE
+            "temperature": OLLAMA_TEMPERATURE,
+            "num_predict": OLLAMA_NUM_PREDICT,
         }
     }
 

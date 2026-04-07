@@ -29,6 +29,6 @@
 
 หน้า Login ของ Chainlit ใช้ได้ทั้ง `username` และ `email` ของบัญชี Django
 
-ค่าเริ่มต้นของโปรเจกต์ตอนนี้ใช้ `qwen3:14b` สำหรับ chat และ `nomic-embed-text-v2-moe` สำหรับ embeddings
+ค่าเริ่มต้นของโปรเจกต์ตอนนี้ใช้ `qwen3:14b` สำหรับ chat, ปิด thinking mode (`OLLAMA_THINK=false`), ตั้ง `keep_alive=15m`, จำกัด `num_predict=384`, ลด `RAG_SEARCH_TOP_K=20` เพื่อให้ตอบไวขึ้น และใช้ `nomic-embed-text-v2-moe` สำหรับ embeddings
 
 ถ้าพร้อมแล้ว ล็อกอินและพิมพ์คำถามได้เลย ระบบรองรับคำตอบภาษาไทย อังกฤษ และญี่ปุ่น โดยประวัติห้องสนทนาจะอยู่ที่ sidebar ด้านซ้ายของหน้าจอ
