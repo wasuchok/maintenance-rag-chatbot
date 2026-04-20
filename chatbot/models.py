@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 
 
-class ConversationThread(models.Model):
+class ConversationThread(models.Model): ## เก็บข้อมูลการสนทนาแต่ละรอบไว้ในฐานข้อมูล
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -21,7 +21,7 @@ class ConversationThread(models.Model):
         return self.name or self.thread_id
 
 
-class ChatMessage(models.Model):
+class ChatMessage(models.Model): ## เก็บข้อความ user และ assistant ที่ส่งไปมาระหว่างการสนทนาไว้ในฐานข้อมูล
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -42,7 +42,7 @@ class ChatMessage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-class ChatMessageFeedback(models.Model):
+class ChatMessageFeedback(models.Model): ## เก็บข้อมูลการให้ feedback แก่ข้อความใน chat ไว้ในฐานข้อมูล
     VALUE_INCORRECT = 0
     VALUE_CORRECT = 1
     VALUE_CHOICES = [
@@ -89,7 +89,7 @@ class ChatMessageFeedback(models.Model):
         return f"{self.conversation_id}:{value_label}"
 
 
-class KnowledgeDocument(models.Model):
+class KnowledgeDocument(models.Model): ## เก็บข้อมูลเอกสารความรู้ที่ใช้ในการสนทนาไว้ในฐานข้อมูล
     VISIBILITY_PRIVATE = "private"
     VISIBILITY_SHARED = "shared"
     VISIBILITY_CHOICES = [
