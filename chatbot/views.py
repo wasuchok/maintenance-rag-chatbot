@@ -698,30 +698,3 @@ def add_knowledge(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     
-@api_view(["GET"])
-def get_chat_history(request, conversation_id):
-    queryset = ChatMessage.objects.filter(conversation_id=conversation_id)
-    if request.user.is_authenticated:
-        queryset = queryset.filter(user=request.user)
-    else:
-        queryset = queryset.filter(user__isnull=True)
-
-    messages = (
-        queryset.order_by("created_at")
-    )
-
-    data = [
-        {
-            "id": msg.id,
-            "role": msg.role,
-            "content": msg.content,
-            "model_name": msg.model_name,
-            "created_at": msg.created_at,
-        }
-        for msg in messages
-    ]
-
-    return Response({
-        "conversation_id": conversation_id,
-        "messages": data
-    })
