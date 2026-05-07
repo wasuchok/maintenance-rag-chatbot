@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import patch
 
 from asgiref.sync import async_to_sync
@@ -21,6 +22,7 @@ from .services.sqlserver_job_card_analytics_service import (
     classify_trend,
 )
 from .services.sqlserver_job_card_ingestion_service import build_sqlserver_job_card_content
+from .services.sqlserver_job_card_ingestion_service import import_sqlserver_job_cards
 from .services.system_health_service import (
     STATUS_ERROR,
     STATUS_OK,
@@ -208,6 +210,39 @@ class LangGraphPlanningTests(SimpleTestCase):
         self.assertEqual(planned["route"], "llm_generate")
         self.assertTrue(planned["langchain_messages"])
         self.assertEqual(planned["sources"], [{"source": "rag"}])
+
+
+class SQLServerJobCardIngestionTests(TestCase):
+    @patch("chatbot.services.sqlserver_job_card_ingestion_service.index_document")
+    @patch("chatbot.services.sqlserver_job_card_ingestion_service.fetch_rows")
+    def test_latest_job_create_date_includes_created_rows(
+        self,
+        mock_fetch_rows,
+        mock_index_document,
+    ):
+        mock_fetch_rows.return_value = [
+            {
+                "ID": "MT-NEW",
+                "MC_NO": "MC-01",
+                "Description": "Newest row",
+                "J_CREATE_DATE": datetime(2026, 5, 5, 10, 25),
+            },
+            {
+                "ID": "MT-OLD",
+                "MC_NO": "MC-02",
+                "Description": "Older row",
+                "J_CREATE_DATE": datetime(2026, 4, 8, 10, 21),
+            },
+        ]
+
+        result = import_sqlserver_job_cards(
+            schema="dbo",
+            view_name="v_MT_JOB_CARD",
+        )
+
+        self.assertEqual(result["summary"].created_count, 2)
+        self.assertEqual(result["latest_job_create_date"], "2026-05-05 10:25:00")
+        self.assertEqual(mock_index_document.call_count, 2)
 
 
 class SystemHealthReportTests(SimpleTestCase):

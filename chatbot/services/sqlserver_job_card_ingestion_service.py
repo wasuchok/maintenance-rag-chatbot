@@ -265,6 +265,11 @@ def import_sqlserver_job_cards(
             existing_documents[document.source] = document
 
     for row in rows:
+        candidate_datetime = row.get("J_CREATE_DATE")
+        if isinstance(candidate_datetime, datetime):
+            if latest_job_create_date is None or candidate_datetime > latest_job_create_date:
+                latest_job_create_date = candidate_datetime
+
         record_id = _normalize_text_value(row.get("ID"))
         if not record_id:
             summary.error_count += 1
@@ -334,11 +339,6 @@ def import_sqlserver_job_cards(
                     "error": str(exc),
                 }
             )
-
-        candidate_datetime = row.get("J_CREATE_DATE")
-        if isinstance(candidate_datetime, datetime):
-            if latest_job_create_date is None or candidate_datetime > latest_job_create_date:
-                latest_job_create_date = candidate_datetime
 
     return {
         "schema": schema,
